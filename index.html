@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实时天气预报</title>
+    <style>
+        /* --- 全局样式 --- */
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;700&display=swap');
+
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: #333;
+            background-size: cover;
+            background-position: center;
+            transition: background-image 1s ease-in-out;
+        }
+        
+        /* --- 天气卡片容器 --- */
+        .weather-card {
+            background: rgba(255, 255, 255, 0.75); /* 半透明白色背景 */
+            backdrop-filter: blur(10px); /* 毛玻璃效果 */
+            -webkit-backdrop-filter: blur(10px);
+            padding: 30px 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            width: 90%;
+            max-width: 400px;
+        }
+
+        /* --- 加载与错误提示 --- */
+        .loading, .error-message {
+            font-size: 1.2rem;
+            color: #555;
+        }
+        
+        .error-message {
+            color: #d9534f;
+        }
+
+        /* --- 天气信息显示 --- */
+        .weather-info {
+            display: none; /* 默认隐藏，加载后显示 */
+        }
+
+        #location {
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 0;
+        }
+
+        #temperature {
+            font-size: 5rem;
+            font-weight: 700;
+            margin: 10px 0;
+            position: relative;
+        }
+        
+        #temperature::after {
+            content: '°C';
+            font-size: 2rem;
+            position: absolute;
+            top: 20px;
+            right: -35px;
+        }
+
+        .description-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        #weather-icon {
+            width: 50px;
+            height: 50px;
+        }
+        
+        #description {
+            font-size: 1.5rem;
+            text-transform: capitalize; /* 首字母大写 */
+            margin: 0;
+        }
+        
+        .details {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 30px;
+            border-top: 1px solid rgba(0, 0, 0, 0.1);
+            padding-top: 20px;
+        }
+        
+        .detail-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .detail-item span {
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+
+        .detail-item p {
+            font-size: 0.9rem;
+            color: #666;
+            margin: 5px 0 0 0;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="weather-card">
+        <div class="loading">
+            <p>正在获取天气信息...</p>
+        </div>
+        
+        <div class="error-message" style="display: none;">
+            <p>无法获取天气信息。请检查您的网络或位置权限设置。</p>
+        </div>
+
+        <div class="weather-info">
+            <h1 id="location">--</h1>
+            <div class="description-container">
+                <img id="weather-icon" src="" alt="Weather Icon">
+                <p id="description">--</p>
+            </div>
+            <h2 id="temperature">--</h2>
+            <div class="details">
+                <div class="detail-item">
+                    <span id="feels-like">--°</span>
+                    <p>体感温度</p>
+                </div>
+                <div class="detail-item">
+                    <span id="humidity">--%</span>
+                    <p>湿度</p>
+                </div>
+                <div class="detail-item">
+                    <span id="wind-speed">--m/s</span>
+                    <p>风速</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- 配置 ---
+            // !!! 重要：请将 'YOUR_API_KEY' 替换为你从 OpenWeatherMap 获取的免费 API Key
+            const apiKey = '在此处替换为你自己的API_KEY'; 
+
+            // --- DOM 元素获取 ---
+            const loadingElement = document.querySelector('.loading');
+            const errorMessageElement = document.querySelector('.error-message');
+            const weatherInfoElement = document.querySelector('.weather-info');
+            
+            const locationEl = document.getElementById('location');
+            const temperatureEl = document.getElementById('temperature');
+            const descriptionEl = document.getElementById('description');
+            const weatherIconEl = document.getElementById('weather-icon');
+            const feelsLikeEl = document.getElementById('feels-like');
+            const humidityEl = document.getElementById('humidity');
+            const windSpeedEl = document.getElementById('wind-speed');
+
+            // --- 获取并显示天气 ---
+            const getWeather = (lat, lon) => {
+                // 使用 HTTPS 协议, lang=zh_cn 获取中文描述, units=metric 获取摄氏度
+                const apiUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&lang=zh_cn&units=metric`;
+
+                fetch(apiUrl)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('API 请求失败');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        updateWeatherUI(data);
+                    })
+                    .catch(error => {
+                        console.error('获取天气数据时出错:', error);
+                        showError();
+                    });
+            };
+
+            // --- 更新UI ---
+            const updateWeatherUI = (data) => {
+                if (data.cod !== 200) {
+                    showError(data.message);
+                    return;
+                }
+                
+                // 更新文本和数据
+                locationEl.textContent = data.name;
+                temperatureEl.textContent = Math.round(data.main.temp);
+                descriptionEl.textContent = data.weather[0].description;
+                feelsLikeEl.textContent = `${Math.round(data.main.feels_like)}°`;
+                humidityEl.textContent = `${data.main.humidity}%`;
+                windSpeedEl.textContent = `${data.wind.speed.toFixed(1)}m/s`;
+
+                // 更新天气图标
+                const iconCode = data.weather[0].icon;
+                weatherIconEl.src = `https://openweathermap.org/img/wn/${iconCode}@2x.png`;
+                weatherIconEl.alt = data.weather[0].description;
+                
+                // 更新背景图片
+                updateBackground(data.weather[0].main);
+
+                // 显示天气信息，隐藏加载提示
+                loadingElement.style.display = 'none';
+                errorMessageElement.style.display = 'none';
+                weatherInfoElement.style.display = 'block';
+            };
+
+            // --- 根据天气更新背景 ---
+            const updateBackground = (weatherMain) => {
+                let backgroundUrl = '';
+                const weather = weatherMain.toLowerCase();
+
+                if (weather.includes('clear')) {
+                    backgroundUrl = 'https://images.unsplash.com/photo-1590075839234-3a9367953258?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1974&q=80'; // 晴天
+                } else if (weather.includes('clouds')) {
+                    backgroundUrl = 'https://images.unsplash.com/photo-1534088568595-a066f410bcda?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1951&q=80'; // 多云
+                } else if (weather.includes('rain') || weather.includes('drizzle')) {
+                    backgroundUrl = 'https://images.unsplash.com/photo-1515694346937-94d85e41e620?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1974&q=80'; // 雨天
+                } else if (weather.includes('thunderstorm')) {
+                    backgroundUrl = 'https://images.unsplash.com/photo-1605727226461-7336b1393413?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1974&q=80'; // 雷暴
+                } else if (weather.includes('snow')) {
+                    backgroundUrl = 'https://images.unsplash.com/photo-1547754980-3df97fed72a8?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1974&q=80'; // 雪天
+                } else if (weather.includes('mist') || weather.includes('fog') || weather.includes('haze')) {
+                    backgroundUrl = 'https://images.unsplash.com/photo-1487621167335-56c636a68e3c?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1964&q=80'; // 雾
+                } else {
+                    backgroundUrl = 'https://images.unsplash.com/photo-1590075839234-3a9367953258?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1974&q=80'; // 默认背景
+                }
+                document.body.style.backgroundImage = `url('${backgroundUrl}')`;
+            };
+
+            // --- 显示错误信息 ---
+            const showError = (message = '无法获取天气信息。请检查您的网络或位置权限设置。') => {
+                errorMessageElement.textContent = message;
+                loadingElement.style.display = 'none';
+                weatherInfoElement.style.display = 'none';
+                errorMessageElement.style.display = 'block';
+            };
+
+            // --- 获取地理位置 ---
+            if ('geolocation' in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lon = position.coords.longitude;
+                        getWeather(lat, lon);
+                    },
+                    (error) => {
+                        console.error('获取地理位置时出错:', error);
+                        showError('无法获取您的位置。请允许浏览器访问您的位置信息。');
+                    }
+                );
+            } else {
+                showError('您的浏览器不支持地理位置服务。');
+            }
+        });
+    </script>
+
+</body>
+</html>
